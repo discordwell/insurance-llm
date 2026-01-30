@@ -76,20 +76,20 @@ const US_STATES = [
   { code: '', name: 'Select State (optional)' },
   { code: 'AL', name: 'Alabama' },
   { code: 'AK', name: 'Alaska' },
-  { code: 'AZ', name: 'Arizona', warning: true },
+  { code: 'AZ', name: 'Arizona' },
   { code: 'AR', name: 'Arkansas' },
   { code: 'CA', name: 'California' },
-  { code: 'CO', name: 'Colorado', warning: true },
+  { code: 'CO', name: 'Colorado' },
   { code: 'CT', name: 'Connecticut' },
   { code: 'DE', name: 'Delaware' },
   { code: 'FL', name: 'Florida' },
-  { code: 'GA', name: 'Georgia', warning: true },
+  { code: 'GA', name: 'Georgia' },
   { code: 'HI', name: 'Hawaii' },
   { code: 'ID', name: 'Idaho' },
   { code: 'IL', name: 'Illinois' },
   { code: 'IN', name: 'Indiana' },
   { code: 'IA', name: 'Iowa' },
-  { code: 'KS', name: 'Kansas', warning: true },
+  { code: 'KS', name: 'Kansas' },
   { code: 'KY', name: 'Kentucky' },
   { code: 'LA', name: 'Louisiana' },
   { code: 'ME', name: 'Maine' },
@@ -99,7 +99,7 @@ const US_STATES = [
   { code: 'MN', name: 'Minnesota' },
   { code: 'MS', name: 'Mississippi' },
   { code: 'MO', name: 'Missouri' },
-  { code: 'MT', name: 'Montana', warning: true },
+  { code: 'MT', name: 'Montana' },
   { code: 'NE', name: 'Nebraska' },
   { code: 'NV', name: 'Nevada' },
   { code: 'NH', name: 'New Hampshire' },
@@ -110,7 +110,7 @@ const US_STATES = [
   { code: 'ND', name: 'North Dakota' },
   { code: 'OH', name: 'Ohio' },
   { code: 'OK', name: 'Oklahoma' },
-  { code: 'OR', name: 'Oregon', warning: true },
+  { code: 'OR', name: 'Oregon' },
   { code: 'PA', name: 'Pennsylvania' },
   { code: 'RI', name: 'Rhode Island' },
   { code: 'SC', name: 'South Carolina' },
@@ -127,8 +127,15 @@ const US_STATES = [
   { code: 'DC', name: 'District of Columbia' },
 ]
 
-// High-risk states that void AI coverage for indemnitee's negligence
-const HIGH_RISK_STATES = ['AZ', 'CO', 'GA', 'KS', 'MT', 'OR']
+// States with broad anti-indemnity statutes - AI coverage limitations
+const AI_LIMITED_STATES: Record<string, { mitigation: string[] }> = {
+  'AZ': { mitigation: ['CG 24 26 endorsement (excludes your negligence from AI)', 'Higher primary limits on your own CGL'] },
+  'CO': { mitigation: ['Wrap-up/OCIP for larger projects', 'Contractual liability coverage on your policy', 'Explicit fault allocation in subcontracts'] },
+  'GA': { mitigation: ['Primary & non-contributory language still valid', 'Ensure your own CGL has adequate limits'] },
+  'KS': { mitigation: ['Wrap-up programs', 'Higher umbrella limits on your policy'] },
+  'MT': { mitigation: ['OCIP/CCIP wrap-up insurance', 'Project-specific coverage', 'Your own policy must be primary'] },
+  'OR': { mitigation: ['CG 24 26 amendment endorsement', 'Contractual liability on your CGL'] },
+}
 
 const SAMPLE_COIS = [
   {
@@ -614,19 +621,26 @@ function App() {
           <div className="state-selector">
             <span className="label">PROJECT STATE:</span>
             <select
-              className={`pixel-select ${HIGH_RISK_STATES.includes(selectedState) ? 'high-risk' : ''}`}
+              className="pixel-select"
               value={selectedState}
               onChange={(e) => setSelectedState(e.target.value)}
             >
               {US_STATES.map((state) => (
                 <option key={state.code} value={state.code}>
-                  {state.name}{state.warning ? ' ⚠️' : ''}
+                  {state.name}
                 </option>
               ))}
             </select>
-            {HIGH_RISK_STATES.includes(selectedState) && (
-              <div className="state-warning">
-                ⚠️ HIGH RISK STATE: {selectedState} has a broad anti-indemnity statute that may VOID Additional Insured coverage for your own negligence.
+            {AI_LIMITED_STATES[selectedState] && (
+              <div className="state-note">
+                <span className="note-header">{selectedState} AI Coverage Note:</span>
+                <span className="note-text">Broad anti-indemnity statute limits AI for shared fault.</span>
+                <div className="mitigation-list">
+                  <span className="mitigation-header">Mitigation options:</span>
+                  {AI_LIMITED_STATES[selectedState].mitigation.map((m, i) => (
+                    <span key={i} className="mitigation-item">• {m}</span>
+                  ))}
+                </div>
               </div>
             )}
           </div>

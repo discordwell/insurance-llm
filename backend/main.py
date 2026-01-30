@@ -1038,25 +1038,36 @@ def mock_compliance_check(coi_data: dict, requirements: dict, state: str = None)
                 "explanation": f"Umbrella coverage is insufficient or not shown. Contract requires ${req_umbrella:,}."
             })
 
+    # State-specific mitigation strategies for broad anti-indemnity states
+    STATE_MITIGATIONS = {
+        "AZ": "Consider CG 24 26 endorsement or higher primary limits on your own CGL.",
+        "CO": "Wrap-up/OCIP recommended for larger projects. Ensure contractual liability coverage on your policy.",
+        "GA": "Primary & non-contributory language remains valid. Verify your own CGL limits are adequate.",
+        "KS": "Wrap-up programs or higher umbrella limits on your own policy recommended.",
+        "MT": "OCIP/CCIP wrap-up insurance or project-specific coverage. Your own policy should be primary.",
+        "OR": "CG 24 26 amendment endorsement or contractual liability on your CGL.",
+    }
+
     # STATE-SPECIFIC CHECKS
     if state_upper:
-        # Anti-Indemnity Statute Warning (CRITICAL for AI coverage)
+        # Anti-Indemnity Statute Note (informational for AI coverage)
         if ai_rules:
             if ai_rules.get('voids_ai_for_sole_negligence'):
-                critical_gaps.append({
-                    "name": f"⚠️ {state_upper} Anti-Indemnity Statute",
-                    "required_value": "Additional Insured coverage valid",
-                    "actual_value": f"{state_upper} voids AI for indemnitee negligence",
-                    "status": "fail",
-                    "explanation": f"CRITICAL: {state_upper} has a BROAD anti-indemnity statute that VOIDS Additional Insured coverage for the indemnitee's own negligence. {ai_rules.get('notes', '')} This means your AI status may NOT protect you if YOU are partially at fault. Consider alternative risk transfer mechanisms or higher limits."
-                })
-            elif ai_rules.get('type') != 'None':
+                mitigation = STATE_MITIGATIONS.get(state_upper, "Review coverage with your broker.")
                 warnings.append({
-                    "name": f"{state_upper} Anti-Indemnity Statute",
-                    "required_value": "Understand AI coverage limitations",
-                    "actual_value": f"{ai_rules.get('type')} restrictions apply",
+                    "name": f"{state_upper} Anti-Indemnity Note",
+                    "required_value": "AI coverage for shared fault",
+                    "actual_value": "Limited by state statute",
                     "status": "warning",
-                    "explanation": f"{state_upper} has a {ai_rules.get('type').lower()} anti-indemnity statute. {ai_rules.get('notes', '')} Insurance savings clause: {'Yes - AI coverage preserved' if ai_rules.get('insurance_savings_clause') else 'No - coverage may be void'}."
+                    "explanation": f"{state_upper}'s broad anti-indemnity statute limits AI coverage when you share fault. {mitigation}"
+                })
+            elif ai_rules.get('type') not in ['None', None]:
+                warnings.append({
+                    "name": f"{state_upper} Anti-Indemnity",
+                    "required_value": "Standard AI coverage",
+                    "actual_value": f"{ai_rules.get('type')} statute applies",
+                    "status": "warning",
+                    "explanation": f"{ai_rules.get('type')} anti-indemnity statute. Insurance savings clause {'preserves AI coverage' if ai_rules.get('insurance_savings_clause') else 'does not apply'}."
                 })
 
         # Workers Comp State-Specific Rules
@@ -1308,22 +1319,31 @@ async def get_state_details(state_code: str):
         }
     }
 
-@app.get("/api/high-risk-states")
-async def get_high_risk_states():
-    """Get states with broad anti-indemnity statutes that void AI coverage"""
-    high_risk = []
+@app.get("/api/ai-limited-states")
+async def get_ai_limited_states():
+    """Get states with broad anti-indemnity statutes that limit AI coverage"""
+    mitigations = {
+        "AZ": ["CG 24 26 endorsement (excludes your negligence from AI)", "Higher primary limits on your own CGL"],
+        "CO": ["Wrap-up/OCIP for larger projects", "Contractual liability coverage on your policy", "Explicit fault allocation in subcontracts"],
+        "GA": ["Primary & non-contributory language still valid", "Ensure your own CGL has adequate limits"],
+        "KS": ["Wrap-up programs", "Higher umbrella limits on your policy"],
+        "MT": ["OCIP/CCIP wrap-up insurance", "Project-specific coverage", "Your own policy must be primary"],
+        "OR": ["CG 24 26 amendment endorsement", "Contractual liability on your CGL"],
+    }
+
+    states = []
     for state_code, ai_rules in STATE_ANTI_INDEMNITY.items():
         if ai_rules.get('voids_ai_for_sole_negligence'):
-            high_risk.append({
+            states.append({
                 "state": state_code,
-                "type": ai_rules.get('type'),
-                "notes": ai_rules.get('notes'),
-                "recommendation": "Consider higher limits, alternative risk transfer, or wrap-up insurance"
+                "statute_type": ai_rules.get('type'),
+                "mitigation_options": mitigations.get(state_code, []),
+                "insurance_savings_clause": ai_rules.get('insurance_savings_clause', False)
             })
     return {
-        "high_risk_states": high_risk,
-        "count": len(high_risk),
-        "warning": "In these states, Additional Insured coverage may be VOID if the named insured (you) is partially at fault. Standard AI endorsements may not protect you."
+        "states": states,
+        "count": len(states),
+        "note": "These states have broad anti-indemnity statutes. AI coverage may be limited when you share fault. See mitigation options for each state."
     }
 
 if __name__ == "__main__":

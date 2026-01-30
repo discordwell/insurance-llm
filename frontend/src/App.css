@@ -620,27 +620,48 @@ body {
   flex: 0 1 auto;
 }
 
-.state-selector .pixel-select.high-risk {
-  border-color: var(--pixel-red);
-  background: #ffebee;
-}
-
-.state-warning {
+.state-note {
   width: 100%;
   margin-top: 10px;
   padding: 12px 15px;
-  background: #ffebee;
-  border: 3px solid var(--pixel-red);
-  font-family: 'Press Start 2P', cursive;
-  font-size: 9px;
-  color: #c62828;
-  line-height: 1.6;
-  box-shadow: 3px 3px 0 var(--pixel-shadow);
+  background: #f5f5f5;
+  border: 2px solid var(--pixel-border);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
-.state-warning::before {
-  content: 'WARNING: ';
-  font-weight: bold;
+.state-note .note-header {
+  font-family: 'Press Start 2P', cursive;
+  font-size: 9px;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.state-note .note-text {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--pixel-text);
+}
+
+.state-note .mitigation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--pixel-gray);
+}
+
+.state-note .mitigation-header {
+  font-family: 'Press Start 2P', cursive;
+  font-size: 8px;
+  color: var(--pixel-gray);
+  margin-bottom: 4px;
+}
+
+.state-note .mitigation-item {
+  font-size: 14px;
+  color: var(--pixel-text);
+  padding-left: 8px;
 }
 
 /* COMPLIANCE OUTPUT */
