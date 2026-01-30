@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import anthropic
+from openai import OpenAI
 import json
 import os
 import re
@@ -15,10 +15,13 @@ load_dotenv()
 # Check if we're in mock mode (for testing without API key)
 MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
 
+# OpenAI model to use
+OPENAI_MODEL = "gpt-5.2"
+
 # Try to find API key from multiple sources
 def get_api_key():
     # 1. Environment variable
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    key = os.environ.get("OPENAI_API_KEY")
     if key:
         return key
 
@@ -27,13 +30,13 @@ def get_api_key():
     if env_path.exists():
         with open(env_path) as f:
             for line in f:
-                if line.startswith("ANTHROPIC_API_KEY="):
+                if line.startswith("OPENAI_API_KEY="):
                     key = line.split("=", 1)[1].strip()
                     if key:
                         return key
 
     # 3. Home directory config
-    home_config = Path.home() / ".anthropic" / "api_key"
+    home_config = Path.home() / ".openai" / "api_key"
     if home_config.exists():
         return home_config.read_text().strip()
 
@@ -61,9 +64,9 @@ def get_client():
         if not api_key:
             raise HTTPException(
                 status_code=500,
-                detail="ANTHROPIC_API_KEY not configured. Set it in environment, .env file, or ~/.anthropic/api_key"
+                detail="OPENAI_API_KEY not configured. Set it in environment, .env file, or ~/.openai/api_key"
             )
-        _client = anthropic.Anthropic(api_key=api_key)
+        _client = OpenAI(api_key=api_key)
     return _client
 
 def mock_extract(text: str) -> dict:
@@ -448,9 +451,9 @@ async def extract_document(doc: DocumentInput):
             return ExtractedPolicy(**extracted)
 
         prompt = EXTRACTION_PROMPT.replace("<<DOCUMENT>>", doc.text)
-        message = get_client().messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
+        response = get_client().chat.completions.create(
+            model=OPENAI_MODEL,
+            max_completion_tokens=4096,
             messages=[
                 {
                     "role": "user",
@@ -459,7 +462,7 @@ async def extract_document(doc: DocumentInput):
             ]
         )
 
-        response_text = message.content[0].text
+        response_text = response.choices[0].message.content
         # Clean up potential markdown formatting
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
@@ -503,13 +506,13 @@ Provide a JSON response with:
 Return ONLY valid JSON."""
 
     try:
-        message = get_client().messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
+        response = get_client().chat.completions.create(
+            model=OPENAI_MODEL,
+            max_completion_tokens=4096,
             messages=[{"role": "user", "content": comparison_prompt}]
         )
 
-        response_text = message.content[0].text
+        response_text = response.choices[0].message.content
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
             if response_text.startswith("json"):
@@ -569,13 +572,13 @@ Write a clear, client-friendly proposal that:
 Format as markdown with clear sections. Keep it concise but comprehensive."""
 
     try:
-        message = get_client().messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2048,
+        response = get_client().chat.completions.create(
+            model=OPENAI_MODEL,
+            max_completion_tokens=2048,
             messages=[{"role": "user", "content": proposal_prompt}]
         )
 
-        return {"proposal": message.content[0].text}
+        return {"proposal": response.choices[0].message.content}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -885,13 +888,13 @@ async def check_coi_compliance(input: COIComplianceInput):
 
         # Step 1: Extract COI data
         extract_prompt = COI_EXTRACTION_PROMPT.replace("<<DOCUMENT>>", input.coi_text)
-        message = get_client().messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
+        response = get_client().chat.completions.create(
+            model=OPENAI_MODEL,
+            max_completion_tokens=4096,
             messages=[{"role": "user", "content": extract_prompt}]
         )
 
-        response_text = message.content[0].text
+        response_text = response.choices[0].message.content
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
             if response_text.startswith("json"):
@@ -905,13 +908,13 @@ async def check_coi_compliance(input: COIComplianceInput):
         compliance_prompt = compliance_prompt.replace("<<REQUIREMENTS>>", json.dumps(requirements, indent=2))
         compliance_prompt = compliance_prompt.replace("<<PROJECT_TYPE>>", project_type_name)
 
-        message = get_client().messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
+        response = get_client().chat.completions.create(
+            model=OPENAI_MODEL,
+            max_completion_tokens=4096,
             messages=[{"role": "user", "content": compliance_prompt}]
         )
 
-        response_text = message.content[0].text
+        response_text = response.choices[0].message.content
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
             if response_text.startswith("json"):
