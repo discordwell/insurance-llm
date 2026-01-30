@@ -235,6 +235,234 @@ class COIComplianceInput(BaseModel):
     coi_text: str
     project_type: Optional[str] = None  # preset project type
     custom_requirements: Optional[dict] = None  # custom requirements
+    state: Optional[str] = None  # 2-letter state code for state-specific rules
+
+# State-specific insurance requirements data
+# Based on comprehensive research as of January 2026
+
+STATE_WORKERS_COMP = {
+    # Format: "STATE": {"required": bool, "threshold": int or None, "construction_specific": str, "monopolistic": bool}
+    "AL": {"required": True, "threshold": 5, "construction_specific": "5+ employees", "monopolistic": False},
+    "AK": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "AZ": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "AR": {"required": True, "threshold": 3, "construction_specific": "3+ in construction (stricter)", "monopolistic": False},
+    "CA": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "CO": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "CT": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "DE": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "FL": {"required": True, "threshold": 1, "construction_specific": "1+ in construction (stricter than 4 general)", "monopolistic": False},
+    "GA": {"required": True, "threshold": 3, "construction_specific": "3+ employees", "monopolistic": False},
+    "HI": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "ID": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "IL": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "IN": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "IA": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "KS": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "KY": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "LA": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "ME": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "MD": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "MA": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "MI": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "MN": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "MS": {"required": True, "threshold": 5, "construction_specific": "5+ employees", "monopolistic": False},
+    "MO": {"required": True, "threshold": 1, "construction_specific": "1+ in construction (stricter than 5 general)", "monopolistic": False},
+    "MT": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "NE": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "NV": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "NH": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "NJ": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "NM": {"required": True, "threshold": 1, "construction_specific": "1+ in construction (stricter than 3 general)", "monopolistic": False},
+    "NY": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "NC": {"required": True, "threshold": 3, "construction_specific": "3+ employees", "monopolistic": False},
+    "ND": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": True},
+    "OH": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": True},
+    "OK": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "OR": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "PA": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "RI": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "SC": {"required": True, "threshold": 4, "construction_specific": "4+ employees", "monopolistic": False},
+    "SD": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "TN": {"required": True, "threshold": 1, "construction_specific": "1+ in construction (stricter than 5 general)", "monopolistic": False},
+    "TX": {"required": False, "threshold": None, "construction_specific": "NOT REQUIRED - only fully voluntary state", "monopolistic": False},
+    "UT": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "VT": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "VA": {"required": True, "threshold": 3, "construction_specific": "3+ employees", "monopolistic": False},
+    "WA": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": True},
+    "WV": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+    "WI": {"required": True, "threshold": 3, "construction_specific": "3+ employees", "monopolistic": False},
+    "WY": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": True},
+    "DC": {"required": True, "threshold": 1, "construction_specific": "All employees", "monopolistic": False},
+}
+
+# Anti-indemnity statutes - CRITICAL for Additional Insured coverage validity
+# These laws limit or void indemnification/AI provisions for contractor negligence
+STATE_ANTI_INDEMNITY = {
+    # Format: "STATE": {"type": str, "voids_ai_for_sole_negligence": bool, "insurance_savings_clause": bool, "notes": str}
+    "AL": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Voids indemnity for indemnitee's sole negligence; insurance savings clause preserves AI"},
+    "AK": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance savings clause preserves AI"},
+    "AZ": {"type": "Broad", "voids_ai_for_sole_negligence": True, "insurance_savings_clause": False, "notes": "CAUTION: Voids AI for indemnitee's negligence - insurance does NOT save it"},
+    "AR": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Voids for sole/partial negligence but insurance savings clause applies"},
+    "CA": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Type I construction - voids sole negligence; insurance savings clause preserves AI"},
+    "CO": {"type": "Broad", "voids_ai_for_sole_negligence": True, "insurance_savings_clause": False, "notes": "CAUTION: Very broad - voids indemnity AND insurance for any indemnitee negligence"},
+    "CT": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Limited to sole negligence; insurance provisions preserved"},
+    "DE": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance savings clause applies"},
+    "FL": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Limits indemnity to proportionate fault; insurance requirements allowed"},
+    "GA": {"type": "Broad", "voids_ai_for_sole_negligence": True, "insurance_savings_clause": False, "notes": "CAUTION: Voids AI provisions for any indemnitee negligence"},
+    "HI": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance provisions preserved"},
+    "ID": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance savings clause applies"},
+    "IL": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Void for sole/concurrent negligence; insurance savings clause preserves AI"},
+    "IN": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Limited construction anti-indemnity; insurance savings clause"},
+    "IA": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "KS": {"type": "Broad", "voids_ai_for_sole_negligence": True, "insurance_savings_clause": False, "notes": "CAUTION: Broad statute voids AI for indemnitee negligence"},
+    "KY": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "LA": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance provisions preserved"},
+    "ME": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "MD": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Void for sole/concurrent; insurance savings clause applies"},
+    "MA": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance savings clause"},
+    "MI": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance provisions preserved"},
+    "MN": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction contracts; insurance requirements allowed"},
+    "MS": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance savings clause"},
+    "MO": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance provisions preserved"},
+    "MT": {"type": "Broad", "voids_ai_for_sole_negligence": True, "insurance_savings_clause": False, "notes": "MOST RESTRICTIVE: Voids AI for ANY negligence of indemnitee - no insurance savings"},
+    "NE": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance savings clause"},
+    "NV": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance provisions preserved"},
+    "NH": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "NJ": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance savings clause applies"},
+    "NM": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Void for sole/concurrent; insurance savings clause"},
+    "NY": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "GOL 5-322.1 - void for negligence; insurance savings clause preserves AI"},
+    "NC": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance provisions preserved"},
+    "ND": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "OH": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance savings clause"},
+    "OK": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance provisions preserved"},
+    "OR": {"type": "Broad", "voids_ai_for_sole_negligence": True, "insurance_savings_clause": False, "notes": "CAUTION: Broad statute - voids AI for indemnitee negligence"},
+    "PA": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance savings clause applies"},
+    "RI": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance provisions preserved"},
+    "SC": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Void for sole/concurrent; insurance savings clause"},
+    "SD": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "TN": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Void for sole/concurrent; insurance savings clause preserves AI"},
+    "TX": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Chapter 151 - void for negligence; explicit insurance savings clause"},
+    "UT": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Sole negligence void; insurance provisions preserved"},
+    "VT": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "VA": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Void for sole/concurrent; insurance savings clause"},
+    "WA": {"type": "Intermediate", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Void for negligence; insurance savings clause applies"},
+    "WV": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "WI": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance provisions preserved"},
+    "WY": {"type": "None", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "No anti-indemnity statute - full contractual freedom"},
+    "DC": {"type": "Partial", "voids_ai_for_sole_negligence": False, "insurance_savings_clause": True, "notes": "Construction-specific; insurance savings clause"},
+}
+
+# State GL requirements for contractor licensing
+STATE_GL_REQUIREMENTS = {
+    # Format: "STATE": {"required_for_license": bool, "minimum_per_occurrence": int or None, "notes": str}
+    "AL": {"required_for_license": True, "minimum_per_occurrence": 100000, "notes": "Required for licensing"},
+    "AK": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for residential contractors"},
+    "AZ": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required - amount varies by license class"},
+    "AR": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "CA": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not required but must disclose if uninsured"},
+    "CO": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "CT": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "DE": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "FL": {"required_for_license": True, "minimum_per_occurrence": 300000, "notes": "Required for construction licensing - $300K min"},
+    "GA": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for residential contractors"},
+    "HI": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for licensing"},
+    "ID": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "IL": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "IN": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "IA": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "KS": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "KY": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "LA": {"required_for_license": True, "minimum_per_occurrence": 100000, "notes": "Required for licensing"},
+    "ME": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "MD": {"required_for_license": True, "minimum_per_occurrence": 100000, "notes": "Required for home improvement"},
+    "MA": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "MI": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for residential builders"},
+    "MN": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for residential contractors"},
+    "MS": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for licensing"},
+    "MO": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "MT": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "NE": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "NV": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for licensing"},
+    "NH": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "NJ": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated but common for home improvement"},
+    "NM": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for licensing"},
+    "NY": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated (local requirements vary)"},
+    "NC": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for general contractors"},
+    "ND": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "OH": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "OK": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "OR": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for CCB license"},
+    "PA": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "RI": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "SC": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for licensing"},
+    "SD": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "TN": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for licensing"},
+    "TX": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated (no state licensing)"},
+    "UT": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for licensing"},
+    "VT": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "VA": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for Class A contractors"},
+    "WA": {"required_for_license": True, "minimum_per_occurrence": None, "notes": "Required for registration"},
+    "WV": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "WI": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "WY": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not state mandated"},
+    "DC": {"required_for_license": False, "minimum_per_occurrence": None, "notes": "Not DC mandated"},
+}
+
+# State auto liability minimums (applies to all vehicles, construction often higher by contract)
+STATE_AUTO_MINIMUMS = {
+    # Format: "STATE": {"bodily_injury_per_person": int, "bodily_injury_per_accident": int, "property_damage": int, "combined_single_limit": int or None}
+    "AL": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "AK": {"bodily_injury_per_person": 50000, "bodily_injury_per_accident": 100000, "property_damage": 25000, "combined_single_limit": None},
+    "AZ": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 15000, "combined_single_limit": None},
+    "AR": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "CA": {"bodily_injury_per_person": 15000, "bodily_injury_per_accident": 30000, "property_damage": 5000, "combined_single_limit": None},
+    "CO": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 15000, "combined_single_limit": None},
+    "CT": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "DE": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 10000, "combined_single_limit": None},
+    "FL": {"bodily_injury_per_person": 0, "bodily_injury_per_accident": 0, "property_damage": 10000, "combined_single_limit": None},  # FL only requires PIP + PD
+    "GA": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "HI": {"bodily_injury_per_person": 20000, "bodily_injury_per_accident": 40000, "property_damage": 10000, "combined_single_limit": None},
+    "ID": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 15000, "combined_single_limit": None},
+    "IL": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 20000, "combined_single_limit": None},
+    "IN": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "IA": {"bodily_injury_per_person": 20000, "bodily_injury_per_accident": 40000, "property_damage": 15000, "combined_single_limit": None},
+    "KS": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "KY": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "LA": {"bodily_injury_per_person": 15000, "bodily_injury_per_accident": 30000, "property_damage": 25000, "combined_single_limit": None},
+    "ME": {"bodily_injury_per_person": 50000, "bodily_injury_per_accident": 100000, "property_damage": 25000, "combined_single_limit": None},
+    "MD": {"bodily_injury_per_person": 30000, "bodily_injury_per_accident": 60000, "property_damage": 15000, "combined_single_limit": None},
+    "MA": {"bodily_injury_per_person": 20000, "bodily_injury_per_accident": 40000, "property_damage": 5000, "combined_single_limit": None},
+    "MI": {"bodily_injury_per_person": 50000, "bodily_injury_per_accident": 100000, "property_damage": 10000, "combined_single_limit": None},
+    "MN": {"bodily_injury_per_person": 30000, "bodily_injury_per_accident": 60000, "property_damage": 10000, "combined_single_limit": None},
+    "MS": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "MO": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "MT": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 20000, "combined_single_limit": None},
+    "NE": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "NV": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 20000, "combined_single_limit": None},
+    "NH": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "NJ": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "NM": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 10000, "combined_single_limit": None},
+    "NY": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 10000, "combined_single_limit": None},
+    "NC": {"bodily_injury_per_person": 30000, "bodily_injury_per_accident": 60000, "property_damage": 25000, "combined_single_limit": None},
+    "ND": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "OH": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "OK": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "OR": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 20000, "combined_single_limit": None},
+    "PA": {"bodily_injury_per_person": 15000, "bodily_injury_per_accident": 30000, "property_damage": 5000, "combined_single_limit": None},
+    "RI": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "SC": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "SD": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "TN": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 15000, "combined_single_limit": None},
+    "TX": {"bodily_injury_per_person": 30000, "bodily_injury_per_accident": 60000, "property_damage": 25000, "combined_single_limit": None},
+    "UT": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 65000, "property_damage": 15000, "combined_single_limit": None},
+    "VT": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 10000, "combined_single_limit": None},
+    "VA": {"bodily_injury_per_person": 30000, "bodily_injury_per_accident": 60000, "property_damage": 20000, "combined_single_limit": None},
+    "WA": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 10000, "combined_single_limit": None},
+    "WV": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 25000, "combined_single_limit": None},
+    "WI": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 10000, "combined_single_limit": None},
+    "WY": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 20000, "combined_single_limit": None},
+    "DC": {"bodily_injury_per_person": 25000, "bodily_injury_per_accident": 50000, "property_damage": 10000, "combined_single_limit": None},
+}
 
 # Preset project types with their requirements
 PROJECT_TYPE_REQUIREMENTS = {
@@ -669,11 +897,19 @@ def mock_coi_extract(text: str) -> dict:
         "cg_20_37_endorsement": 'cg 20 37' in text_lower or 'cg2037' in text_lower,
     }
 
-def mock_compliance_check(coi_data: dict, requirements: dict) -> dict:
+def mock_compliance_check(coi_data: dict, requirements: dict, state: str = None) -> dict:
     """Generate mock compliance check for testing"""
     critical_gaps = []
     warnings = []
     passed = []
+    state_warnings = []
+
+    # Get state-specific rules if state provided
+    state_upper = state.upper() if state else None
+    wc_rules = STATE_WORKERS_COMP.get(state_upper) if state_upper else None
+    ai_rules = STATE_ANTI_INDEMNITY.get(state_upper) if state_upper else None
+    gl_rules = STATE_GL_REQUIREMENTS.get(state_upper) if state_upper else None
+    auto_rules = STATE_AUTO_MINIMUMS.get(state_upper) if state_upper else None
 
     # Check GL per occurrence
     coi_limit = parse_limit_to_number(coi_data.get('gl_limit_per_occurrence', '') or '')
@@ -802,6 +1038,70 @@ def mock_compliance_check(coi_data: dict, requirements: dict) -> dict:
                 "explanation": f"Umbrella coverage is insufficient or not shown. Contract requires ${req_umbrella:,}."
             })
 
+    # STATE-SPECIFIC CHECKS
+    if state_upper:
+        # Anti-Indemnity Statute Warning (CRITICAL for AI coverage)
+        if ai_rules:
+            if ai_rules.get('voids_ai_for_sole_negligence'):
+                critical_gaps.append({
+                    "name": f"⚠️ {state_upper} Anti-Indemnity Statute",
+                    "required_value": "Additional Insured coverage valid",
+                    "actual_value": f"{state_upper} voids AI for indemnitee negligence",
+                    "status": "fail",
+                    "explanation": f"CRITICAL: {state_upper} has a BROAD anti-indemnity statute that VOIDS Additional Insured coverage for the indemnitee's own negligence. {ai_rules.get('notes', '')} This means your AI status may NOT protect you if YOU are partially at fault. Consider alternative risk transfer mechanisms or higher limits."
+                })
+            elif ai_rules.get('type') != 'None':
+                warnings.append({
+                    "name": f"{state_upper} Anti-Indemnity Statute",
+                    "required_value": "Understand AI coverage limitations",
+                    "actual_value": f"{ai_rules.get('type')} restrictions apply",
+                    "status": "warning",
+                    "explanation": f"{state_upper} has a {ai_rules.get('type').lower()} anti-indemnity statute. {ai_rules.get('notes', '')} Insurance savings clause: {'Yes - AI coverage preserved' if ai_rules.get('insurance_savings_clause') else 'No - coverage may be void'}."
+                })
+
+        # Workers Comp State-Specific Rules
+        if wc_rules:
+            if not wc_rules.get('required'):
+                # Texas - only state where WC is optional
+                warnings.append({
+                    "name": f"{state_upper} Workers Comp",
+                    "required_value": "Workers Comp recommended",
+                    "actual_value": coi_data.get('workers_comp') and "Present" or "Not shown",
+                    "status": "warning" if not coi_data.get('workers_comp') else "pass",
+                    "explanation": f"{state_upper} is the only state where Workers' Compensation is fully voluntary. {wc_rules.get('construction_specific', '')} However, most contracts still require it. Non-subscribers face unlimited liability exposure."
+                })
+            elif wc_rules.get('monopolistic'):
+                passed.append({
+                    "name": f"{state_upper} Monopolistic State Fund",
+                    "required_value": "State fund coverage",
+                    "actual_value": "Monopolistic state rules apply",
+                    "status": "pass",
+                    "explanation": f"{state_upper} is a monopolistic state - WC must be purchased through the state fund ({state_upper} State Insurance Fund). Private insurers cannot write WC here."
+                })
+            elif wc_rules.get('threshold') and wc_rules.get('threshold') > 1:
+                # States with higher thresholds
+                warnings.append({
+                    "name": f"{state_upper} WC Threshold",
+                    "required_value": f"WC required for {wc_rules.get('threshold')}+ employees",
+                    "actual_value": f"Construction rule: {wc_rules.get('construction_specific', 'Standard')}",
+                    "status": "warning",
+                    "explanation": f"{state_upper} requires WC for {wc_rules.get('threshold')}+ employees. Construction-specific: {wc_rules.get('construction_specific', '')}. Verify employee count threshold is met."
+                })
+
+        # State GL Requirements
+        if gl_rules and gl_rules.get('required_for_license'):
+            if gl_rules.get('minimum_per_occurrence'):
+                state_min = gl_rules.get('minimum_per_occurrence')
+                coi_limit = parse_limit_to_number(coi_data.get('gl_limit_per_occurrence', '') or '')
+                if coi_limit < state_min:
+                    warnings.append({
+                        "name": f"{state_upper} State GL Minimum",
+                        "required_value": f"${state_min:,} state minimum",
+                        "actual_value": coi_data.get('gl_limit_per_occurrence', 'Not specified'),
+                        "status": "warning",
+                        "explanation": f"{state_upper} requires minimum ${state_min:,} GL for contractor licensing. {gl_rules.get('notes', '')} Current coverage may not meet state licensing requirements."
+                    })
+
     # Determine overall status
     if len(critical_gaps) > 0:
         overall_status = "non-compliant"
@@ -883,7 +1183,7 @@ async def check_coi_compliance(input: COIComplianceInput):
         # Use mock mode or real API
         if MOCK_MODE:
             coi_data = mock_coi_extract(input.coi_text)
-            result = mock_compliance_check(coi_data, requirements)
+            result = mock_compliance_check(coi_data, requirements, input.state)
             return ComplianceReport(**result)
 
         # Step 1: Extract COI data
@@ -943,6 +1243,87 @@ async def get_project_types():
             "umbrella_minimum": f"${val.get('umbrella_minimum', 0):,}" if val.get('umbrella_minimum', 0) > 0 else None,
         }
         for key, val in PROJECT_TYPE_REQUIREMENTS.items()
+    }
+
+@app.get("/api/states")
+async def get_states():
+    """Get list of all states with summary of their insurance rules"""
+    states = []
+    for state_code in sorted(STATE_WORKERS_COMP.keys()):
+        wc = STATE_WORKERS_COMP.get(state_code, {})
+        ai = STATE_ANTI_INDEMNITY.get(state_code, {})
+        gl = STATE_GL_REQUIREMENTS.get(state_code, {})
+
+        states.append({
+            "code": state_code,
+            "wc_required": wc.get('required', True),
+            "wc_threshold": wc.get('threshold'),
+            "monopolistic_wc": wc.get('monopolistic', False),
+            "anti_indemnity_type": ai.get('type', 'Unknown'),
+            "voids_ai_coverage": ai.get('voids_ai_for_sole_negligence', False),
+            "gl_required_for_license": gl.get('required_for_license', False),
+            "risk_level": "HIGH" if ai.get('voids_ai_for_sole_negligence') else ("MEDIUM" if ai.get('type') not in ['None', None] else "LOW")
+        })
+    return states
+
+@app.get("/api/state/{state_code}")
+async def get_state_details(state_code: str):
+    """Get detailed insurance requirements for a specific state"""
+    state_upper = state_code.upper()
+
+    if state_upper not in STATE_WORKERS_COMP:
+        raise HTTPException(status_code=404, detail=f"State {state_upper} not found")
+
+    wc = STATE_WORKERS_COMP.get(state_upper, {})
+    ai = STATE_ANTI_INDEMNITY.get(state_upper, {})
+    gl = STATE_GL_REQUIREMENTS.get(state_upper, {})
+    auto = STATE_AUTO_MINIMUMS.get(state_upper, {})
+
+    return {
+        "state": state_upper,
+        "workers_comp": {
+            "required": wc.get('required', True),
+            "threshold": wc.get('threshold'),
+            "construction_specific": wc.get('construction_specific'),
+            "monopolistic": wc.get('monopolistic', False),
+            "notes": "Must purchase through state fund" if wc.get('monopolistic') else ("Voluntary state" if not wc.get('required') else "Standard private market")
+        },
+        "anti_indemnity": {
+            "type": ai.get('type', 'Unknown'),
+            "voids_ai_for_negligence": ai.get('voids_ai_for_sole_negligence', False),
+            "insurance_savings_clause": ai.get('insurance_savings_clause', True),
+            "notes": ai.get('notes', ''),
+            "risk_level": "CRITICAL" if ai.get('voids_ai_for_sole_negligence') else "STANDARD"
+        },
+        "general_liability": {
+            "required_for_license": gl.get('required_for_license', False),
+            "minimum_per_occurrence": f"${gl.get('minimum_per_occurrence'):,}" if gl.get('minimum_per_occurrence') else None,
+            "notes": gl.get('notes', '')
+        },
+        "auto_liability": {
+            "bodily_injury_per_person": f"${auto.get('bodily_injury_per_person', 25000):,}",
+            "bodily_injury_per_accident": f"${auto.get('bodily_injury_per_accident', 50000):,}",
+            "property_damage": f"${auto.get('property_damage', 25000):,}",
+            "combined_format": f"{auto.get('bodily_injury_per_person', 25000)//1000}/{auto.get('bodily_injury_per_accident', 50000)//1000}/{auto.get('property_damage', 25000)//1000}"
+        }
+    }
+
+@app.get("/api/high-risk-states")
+async def get_high_risk_states():
+    """Get states with broad anti-indemnity statutes that void AI coverage"""
+    high_risk = []
+    for state_code, ai_rules in STATE_ANTI_INDEMNITY.items():
+        if ai_rules.get('voids_ai_for_sole_negligence'):
+            high_risk.append({
+                "state": state_code,
+                "type": ai_rules.get('type'),
+                "notes": ai_rules.get('notes'),
+                "recommendation": "Consider higher limits, alternative risk transfer, or wrap-up insurance"
+            })
+    return {
+        "high_risk_states": high_risk,
+        "count": len(high_risk),
+        "warning": "In these states, Additional Insured coverage may be VOID if the named insured (you) is partially at fault. Standard AI endorsements may not protect you."
     }
 
 if __name__ == "__main__":

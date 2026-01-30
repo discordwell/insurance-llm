@@ -71,6 +71,65 @@ interface ProjectType {
   umbrella_minimum?: string
 }
 
+// US States for compliance checking
+const US_STATES = [
+  { code: '', name: 'Select State (optional)' },
+  { code: 'AL', name: 'Alabama' },
+  { code: 'AK', name: 'Alaska' },
+  { code: 'AZ', name: 'Arizona', warning: true },
+  { code: 'AR', name: 'Arkansas' },
+  { code: 'CA', name: 'California' },
+  { code: 'CO', name: 'Colorado', warning: true },
+  { code: 'CT', name: 'Connecticut' },
+  { code: 'DE', name: 'Delaware' },
+  { code: 'FL', name: 'Florida' },
+  { code: 'GA', name: 'Georgia', warning: true },
+  { code: 'HI', name: 'Hawaii' },
+  { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' },
+  { code: 'IN', name: 'Indiana' },
+  { code: 'IA', name: 'Iowa' },
+  { code: 'KS', name: 'Kansas', warning: true },
+  { code: 'KY', name: 'Kentucky' },
+  { code: 'LA', name: 'Louisiana' },
+  { code: 'ME', name: 'Maine' },
+  { code: 'MD', name: 'Maryland' },
+  { code: 'MA', name: 'Massachusetts' },
+  { code: 'MI', name: 'Michigan' },
+  { code: 'MN', name: 'Minnesota' },
+  { code: 'MS', name: 'Mississippi' },
+  { code: 'MO', name: 'Missouri' },
+  { code: 'MT', name: 'Montana', warning: true },
+  { code: 'NE', name: 'Nebraska' },
+  { code: 'NV', name: 'Nevada' },
+  { code: 'NH', name: 'New Hampshire' },
+  { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' },
+  { code: 'NY', name: 'New York' },
+  { code: 'NC', name: 'North Carolina' },
+  { code: 'ND', name: 'North Dakota' },
+  { code: 'OH', name: 'Ohio' },
+  { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon', warning: true },
+  { code: 'PA', name: 'Pennsylvania' },
+  { code: 'RI', name: 'Rhode Island' },
+  { code: 'SC', name: 'South Carolina' },
+  { code: 'SD', name: 'South Dakota' },
+  { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' },
+  { code: 'UT', name: 'Utah' },
+  { code: 'VT', name: 'Vermont' },
+  { code: 'VA', name: 'Virginia' },
+  { code: 'WA', name: 'Washington' },
+  { code: 'WV', name: 'West Virginia' },
+  { code: 'WI', name: 'Wisconsin' },
+  { code: 'WY', name: 'Wyoming' },
+  { code: 'DC', name: 'District of Columbia' },
+]
+
+// High-risk states that void AI coverage for indemnitee's negligence
+const HIGH_RISK_STATES = ['AZ', 'CO', 'GA', 'KS', 'MT', 'OR']
+
 const SAMPLE_COIS = [
   {
     name: "Non-Compliant COI",
@@ -298,6 +357,7 @@ function App() {
   const [appMode, setAppMode] = useState<'extract' | 'compliance'>('extract')
   const [coiText, setCoiText] = useState('')
   const [projectType, setProjectType] = useState('commercial_construction')
+  const [selectedState, setSelectedState] = useState('')
   const [complianceReport, setComplianceReport] = useState<ComplianceReport | null>(null)
   const [complianceTab, setComplianceTab] = useState<'report' | 'letter'>('report')
 
@@ -386,7 +446,8 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           coi_text: coiText,
-          project_type: projectType
+          project_type: projectType,
+          state: selectedState || null
         })
       })
 
@@ -548,6 +609,26 @@ function App() {
               <option value="government_municipal">Government/Municipal ($2M/$4M GL)</option>
               <option value="industrial_manufacturing">Industrial/Manufacturing ($2M/$4M GL)</option>
             </select>
+          </div>
+
+          <div className="state-selector">
+            <span className="label">PROJECT STATE:</span>
+            <select
+              className={`pixel-select ${HIGH_RISK_STATES.includes(selectedState) ? 'high-risk' : ''}`}
+              value={selectedState}
+              onChange={(e) => setSelectedState(e.target.value)}
+            >
+              {US_STATES.map((state) => (
+                <option key={state.code} value={state.code}>
+                  {state.name}{state.warning ? ' ⚠️' : ''}
+                </option>
+              ))}
+            </select>
+            {HIGH_RISK_STATES.includes(selectedState) && (
+              <div className="state-warning">
+                ⚠️ HIGH RISK STATE: {selectedState} has a broad anti-indemnity statute that may VOID Additional Insured coverage for your own negligence.
+              </div>
+            )}
           </div>
 
           <textarea
