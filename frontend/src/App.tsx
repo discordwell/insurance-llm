@@ -5,6 +5,14 @@ import './App.css'
 // API base URL - uses environment variable in production, localhost in dev
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8081'
 
+// Document classification result
+interface ClassifyResult {
+  document_type: 'coi' | 'lease' | 'insurance_policy' | 'contract' | 'unknown'
+  confidence: number
+  description: string
+  supported: boolean
+}
+
 // COI Compliance Types
 interface COIData {
   insured_name?: string
@@ -102,142 +110,62 @@ const US_STATES = [
 
 // States with broad anti-indemnity statutes - AI coverage limitations
 const AI_LIMITED_STATES: Record<string, { mitigation: string[] }> = {
-  'AZ': { mitigation: ['CG 24 26 endorsement (excludes your negligence from AI)', 'Higher primary limits on your own CGL'] },
-  'CO': { mitigation: ['Wrap-up/OCIP for larger projects', 'Contractual liability coverage on your policy', 'Explicit fault allocation in subcontracts'] },
-  'GA': { mitigation: ['Primary & non-contributory language still valid', 'Ensure your own CGL has adequate limits'] },
-  'KS': { mitigation: ['Wrap-up programs', 'Higher umbrella limits on your policy'] },
-  'MT': { mitigation: ['OCIP/CCIP wrap-up insurance', 'Project-specific coverage', 'Your own policy must be primary'] },
+  'AZ': { mitigation: ['CG 24 26 endorsement', 'Higher primary limits on your own CGL'] },
+  'CO': { mitigation: ['Wrap-up/OCIP for larger projects', 'Contractual liability coverage'] },
+  'GA': { mitigation: ['Primary & non-contributory language still valid', 'Ensure adequate CGL limits'] },
+  'KS': { mitigation: ['Wrap-up programs', 'Higher umbrella limits'] },
+  'MT': { mitigation: ['OCIP/CCIP wrap-up insurance', 'Your own policy must be primary'] },
   'OR': { mitigation: ['CG 24 26 amendment endorsement', 'Contractual liability on your CGL'] },
 }
 
-const SAMPLE_COIS = [
-  {
-    name: "Non-Compliant COI",
-    text: `CERTIFICATE OF LIABILITY INSURANCE
-DATE: 01/15/2024
-
-PRODUCER: ABC Insurance Agency
-123 Main St, Anytown, USA
-
-INSURED: Smith Electrical LLC
-456 Oak Ave, Anytown, USA
-
-THIS CERTIFICATE IS ISSUED AS A MATTER OF INFORMATION ONLY AND CONFERS NO RIGHTS UPON THE CERTIFICATE HOLDER.
-
-COVERAGES:
-Commercial General Liability
-  Each Occurrence: $500,000
-  General Aggregate: $1,000,000
-  Products/Completed Ops: $500,000
-  Personal & Adv Injury: $500,000
-
-Workers Compensation: YES - Statutory Limits
-
-Automobile Liability: $500,000 Combined Single Limit
-
-CERTIFICATE HOLDER:
-Johnson Construction Co.
-789 Builder Blvd
-Anytown, USA 12345
-
-[X] Additional Insured (see attached)
-[ ] Waiver of Subrogation
-
-DESCRIPTION OF OPERATIONS:
-Electrical work at Main St Office Building project
-
-Policy Period: 01/01/2024 to 01/01/2025`
-  },
-  {
-    name: "Compliant COI",
-    text: `CERTIFICATE OF LIABILITY INSURANCE
-DATE: 01/15/2024
-
-PRODUCER: Premier Insurance Brokers
-500 Commerce Way, Metro City, USA
-
-INSURED: Elite Mechanical Contractors Inc
-1200 Industrial Pkwy, Metro City, USA
-
-COVERAGES:
-Commercial General Liability (CG 20 10, CG 20 37 endorsements attached)
-  Each Occurrence: $1,000,000
-  General Aggregate: $2,000,000
-  Products/Completed Ops: $2,000,000
-  Personal & Adv Injury: $1,000,000
-
-Workers Compensation: YES - Statutory Limits
-  Employer's Liability: $1,000,000
-
-Automobile Liability: $1,000,000 Combined Single Limit
-
-Umbrella/Excess Liability: $5,000,000
-
-CERTIFICATE HOLDER:
-Apex General Contractors LLC
-999 Tower Plaza, Suite 100
-Metro City, USA 54321
-
-[X] Additional Insured - CG 20 10 07/04, CG 20 37 07/04
-[X] Waiver of Subrogation
-[X] Primary and Non-Contributory
-
-DESCRIPTION OF OPERATIONS:
-HVAC installation and mechanical work at Metro Tower Development.
-Apex General Contractors LLC is named as Additional Insured per written contract.
-
-Policy Period: 01/01/2024 to 01/01/2025`
-  },
-  {
-    name: "Missing Endorsements",
-    text: `CERTIFICATE OF LIABILITY INSURANCE
-DATE: 02/01/2024
-
-PRODUCER: QuickCover Insurance
-Online Quote #QC-2024-8821
-
-INSURED: Rapid Roofing Services
-PO Box 445, Suburbia, USA
-
-COVERAGES:
-Commercial General Liability
-  Each Occurrence: $1,000,000
-  General Aggregate: $2,000,000
-
-Workers Compensation: YES - Statutory
-
-Auto Liability: $1,000,000
-
-CERTIFICATE HOLDER:
-Homebuilders Inc
-123 Development Dr
-Suburbia, USA
-
-[X] Additional Insured
-[ ] Waiver of Subrogation
-
-DESCRIPTION OF OPERATIONS:
-Roofing work - various residential projects
-
-NOTE: Certificate holder is listed for information purposes only.
-
-Policy: 01/15/2024 - 01/15/2025`
-  }
-]
+// Friendly names for unsupported document types
+const UNSUPPORTED_DOC_NAMES: Record<string, string> = {
+  'insurance_policy': 'full insurance policies',
+  'contract': 'general contracts',
+  'unknown': 'this type of document',
+}
 
 
 function App() {
   const [loading, setLoading] = useState(false)
   const [ocrLoading, setOcrLoading] = useState(false)
+  const [classifying, setClassifying] = useState(false)
   const [scanLines] = useState(true)
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
 
-  // COI Compliance State
-  const [coiText, setCoiText] = useState('')
+  // Document state
+  const [docText, setDocText] = useState('')
+  const [docType, setDocType] = useState<ClassifyResult | null>(null)
   const [projectType, setProjectType] = useState('commercial_construction')
   const [selectedState, setSelectedState] = useState('')
+
+  // Results
   const [complianceReport, setComplianceReport] = useState<ComplianceReport | null>(null)
   const [complianceTab, setComplianceTab] = useState<'report' | 'letter'>('report')
+
+  // Unsupported document modal
+  const [showUnsupportedModal, setShowUnsupportedModal] = useState(false)
+  const [unsupportedType, setUnsupportedType] = useState('')
+  const [waitlistEmail, setWaitlistEmail] = useState('')
+  const [emailSubmitted, setEmailSubmitted] = useState(false)
+
+  const classifyDocument = async (text: string): Promise<ClassifyResult | null> => {
+    setClassifying(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/classify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      })
+      if (!res.ok) throw new Error('Classification failed')
+      return await res.json()
+    } catch (err) {
+      console.error(err)
+      return null
+    } finally {
+      setClassifying(false)
+    }
+  }
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
@@ -245,12 +173,19 @@ function App() {
 
     setUploadedFileName(file.name)
     setComplianceReport(null)
+    setDocType(null)
+
+    let text = ''
 
     // For text files, read directly
     if (file.type === 'text/plain') {
       const reader = new FileReader()
-      reader.onload = () => {
-        setCoiText(reader.result as string)
+      reader.onload = async () => {
+        text = reader.result as string
+        setDocText(text)
+        // Classify after getting text
+        const classification = await classifyDocument(text)
+        handleClassification(classification)
       }
       reader.readAsText(file)
       return
@@ -272,7 +207,12 @@ function App() {
 
       if (!res.ok) throw new Error('OCR failed')
       const data = await res.json()
-      setCoiText(data.text)
+      text = data.text
+      setDocText(text)
+
+      // Classify after OCR
+      const classification = await classifyDocument(text)
+      handleClassification(classification)
     } catch (err) {
       console.error(err)
       alert('Failed to process file. Make sure the backend is running!')
@@ -281,13 +221,28 @@ function App() {
     }
   }, [])
 
+  const handleClassification = (classification: ClassifyResult | null) => {
+    if (!classification) {
+      setDocType({ document_type: 'unknown', confidence: 0, description: 'Unknown', supported: false })
+      setUnsupportedType('unknown')
+      setShowUnsupportedModal(true)
+      return
+    }
+
+    setDocType(classification)
+
+    if (!classification.supported) {
+      setUnsupportedType(classification.document_type)
+      setShowUnsupportedModal(true)
+    }
+  }
+
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.readAsDataURL(file)
       reader.onload = () => {
         const result = reader.result as string
-        // Remove data URL prefix (e.g., "data:application/pdf;base64,")
         const base64 = result.split(',')[1]
         resolve(base64)
       }
@@ -305,14 +260,26 @@ function App() {
     multiple: false
   })
 
-  const loadCoiSample = (sample: typeof SAMPLE_COIS[0]) => {
-    setCoiText(sample.text)
-    setComplianceReport(null)
-    setUploadedFileName(null)
+  const handleAnalyze = async () => {
+    if (!docText.trim()) return
+
+    // If no classification yet, classify first
+    if (!docType) {
+      const classification = await classifyDocument(docText)
+      handleClassification(classification)
+      if (!classification?.supported) return
+      setDocType(classification)
+    }
+
+    // Route to appropriate analyzer
+    if (docType?.document_type === 'coi') {
+      await analyzeCOI()
+    } else if (docType?.document_type === 'lease') {
+      await analyzeLease()
+    }
   }
 
-  const handleCheckCompliance = async () => {
-    if (!coiText.trim()) return
+  const analyzeCOI = async () => {
     setLoading(true)
     setComplianceReport(null)
 
@@ -321,7 +288,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          coi_text: coiText,
+          coi_text: docText,
           project_type: projectType,
           state: selectedState || null
         })
@@ -337,6 +304,32 @@ function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const analyzeLease = async () => {
+    // TODO: Implement lease analysis
+    // For now, show a placeholder
+    setLoading(true)
+    setTimeout(() => {
+      setLoading(false)
+      alert('Lease analysis coming soon! The backend endpoint is being built.')
+    }, 500)
+  }
+
+  const handleWaitlistSubmit = () => {
+    // TODO: Actually submit to a backend/email service
+    console.log('Waitlist signup:', waitlistEmail, 'for', unsupportedType)
+    setEmailSubmitted(true)
+  }
+
+  const resetAll = () => {
+    setUploadedFileName(null)
+    setDocText('')
+    setDocType(null)
+    setComplianceReport(null)
+    setShowUnsupportedModal(false)
+    setWaitlistEmail('')
+    setEmailSubmitted(false)
   }
 
   const getStatusColor = (status: string) => {
@@ -368,6 +361,13 @@ function App() {
     }
   }
 
+  const getAnalyzeButtonText = () => {
+    if (loading) return '[ ANALYZING... ]'
+    if (classifying) return '[ READING... ]'
+    if (ocrLoading) return '[ EXTRACTING... ]'
+    return '> CAN THEY FUCK ME?'
+  }
+
   return (
     <div className={`app ${scanLines ? 'scanlines' : ''}`}>
       <header className="header">
@@ -375,18 +375,23 @@ function App() {
           <span className="logo-icon">&#9043;</span>
           <h1>Can They Fuck Me?</h1>
         </div>
-        <p className="tagline">Upload your insurance policy, lease, or contract to see how it stacks up against best practices and state standards</p>
+        <p className="tagline">Upload your insurance policy, lease, or contract to see how it stacks up</p>
       </header>
 
       <main className="main">
         <section className="input-section">
-          <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''} ${ocrLoading ? 'processing' : ''}`}>
+          <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''} ${ocrLoading || classifying ? 'processing' : ''}`}>
             <input {...getInputProps()} />
             <div className="dropzone-content">
               {ocrLoading ? (
                 <>
                   <span className="dropzone-icon">[...]</span>
-                  <p>READING DOCUMENT...</p>
+                  <p>EXTRACTING TEXT...</p>
+                </>
+              ) : classifying ? (
+                <>
+                  <span className="dropzone-icon">[?]</span>
+                  <p>IDENTIFYING DOCUMENT...</p>
                 </>
               ) : isDragActive ? (
                 <>
@@ -407,76 +412,71 @@ function App() {
             <div className="uploaded-file">
               <span className="file-label">LOADED:</span>
               <span className="file-name">{uploadedFileName}</span>
-              <button
-                className="clear-btn"
-                onClick={() => { setUploadedFileName(null); setCoiText(''); setComplianceReport(null); }}
-              >
-                [X]
-              </button>
+              {docType && (
+                <span className="doc-type-badge" style={{
+                  backgroundColor: docType.supported ? 'var(--pixel-green)' : 'var(--pixel-yellow)'
+                }}>
+                  {docType.description}
+                </span>
+              )}
+              <button className="clear-btn" onClick={resetAll}>[X]</button>
             </div>
           )}
 
           <textarea
             className="doc-input"
-            value={coiText}
-            onChange={(e) => setCoiText(e.target.value)}
+            value={docText}
+            onChange={(e) => { setDocText(e.target.value); setDocType(null); }}
             placeholder="...or paste text here"
             rows={8}
           />
 
-          <div className="options-row">
-            <div className="option-group">
-              <span className="label">TYPE:</span>
-              <select
-                className="pixel-select"
-                value={projectType}
-                onChange={(e) => setProjectType(e.target.value)}
-              >
-                <option value="commercial_construction">Commercial ($1M/$2M)</option>
-                <option value="residential_construction">Residential ($500K/$1M)</option>
-                <option value="government_municipal">Government ($2M/$4M)</option>
-                <option value="industrial_manufacturing">Industrial ($2M/$4M)</option>
-              </select>
-            </div>
+          {docType?.document_type === 'coi' && (
+            <div className="options-row">
+              <div className="option-group">
+                <span className="label">TYPE:</span>
+                <select
+                  className="pixel-select"
+                  value={projectType}
+                  onChange={(e) => setProjectType(e.target.value)}
+                >
+                  <option value="commercial_construction">Commercial ($1M/$2M)</option>
+                  <option value="residential_construction">Residential ($500K/$1M)</option>
+                  <option value="government_municipal">Government ($2M/$4M)</option>
+                  <option value="industrial_manufacturing">Industrial ($2M/$4M)</option>
+                </select>
+              </div>
 
-            <div className="option-group">
-              <span className="label">STATE:</span>
-              <select
-                className="pixel-select"
-                value={selectedState}
-                onChange={(e) => setSelectedState(e.target.value)}
-              >
-                {US_STATES.map((state) => (
-                  <option key={state.code} value={state.code}>
-                    {state.name}
-                  </option>
-                ))}
-              </select>
+              <div className="option-group">
+                <span className="label">STATE:</span>
+                <select
+                  className="pixel-select"
+                  value={selectedState}
+                  onChange={(e) => setSelectedState(e.target.value)}
+                >
+                  {US_STATES.map((state) => (
+                    <option key={state.code} value={state.code}>
+                      {state.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
-          {AI_LIMITED_STATES[selectedState] && (
+          {docType?.document_type === 'coi' && AI_LIMITED_STATES[selectedState] && (
             <div className="state-warning">
               !! {selectedState} limits Additional Insured coverage for shared fault
             </div>
           )}
 
           <button
-            className={`pixel-btn primary ${loading ? 'loading' : ''}`}
-            onClick={handleCheckCompliance}
-            disabled={loading || ocrLoading || !coiText.trim()}
+            className={`pixel-btn primary ${loading || classifying || ocrLoading ? 'loading' : ''}`}
+            onClick={handleAnalyze}
+            disabled={loading || classifying || ocrLoading || !docText.trim()}
           >
-            {loading ? '[ ANALYZING... ]' : '> CAN THEY FUCK ME?'}
+            {getAnalyzeButtonText()}
           </button>
-
-          <div className="sample-docs">
-            <span className="label">or try a sample:</span>
-            {SAMPLE_COIS.map((doc, i) => (
-              <button key={i} className="pixel-btn small" onClick={() => loadCoiSample(doc)}>
-                {doc.name}
-              </button>
-            ))}
-          </div>
         </section>
 
         {complianceReport && (
@@ -645,8 +645,56 @@ function App() {
             )}
           </section>
         )}
-
       </main>
+
+      {/* Unsupported Document Modal */}
+      {showUnsupportedModal && (
+        <div className="modal-overlay" onClick={() => setShowUnsupportedModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-icon">[!]</span>
+              <h2>COMING SOON</h2>
+            </div>
+            <div className="modal-content">
+              {emailSubmitted ? (
+                <>
+                  <p className="modal-success">GOT IT!</p>
+                  <p>We'll ping you at <strong>{waitlistEmail}</strong> when we add support for {UNSUPPORTED_DOC_NAMES[unsupportedType] || unsupportedType}.</p>
+                  <button className="pixel-btn primary" onClick={resetAll}>
+                    [OK] COOL
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>Sorry... we haven't done our homework on <strong>{UNSUPPORTED_DOC_NAMES[unsupportedType] || unsupportedType}</strong>.</p>
+                  <p>Yet.</p>
+                  <p className="modal-cta">Drop your email and we'll ping you first thing:</p>
+                  <input
+                    type="email"
+                    className="pixel-input"
+                    placeholder="you@example.com"
+                    value={waitlistEmail}
+                    onChange={(e) => setWaitlistEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && waitlistEmail && handleWaitlistSubmit()}
+                  />
+                  <div className="modal-buttons">
+                    <button
+                      className="pixel-btn primary"
+                      onClick={handleWaitlistSubmit}
+                      disabled={!waitlistEmail}
+                    >
+                      [NOTIFY ME]
+                    </button>
+                    <button className="pixel-btn secondary" onClick={() => setShowUnsupportedModal(false)}>
+                      [NEVERMIND]
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="footer">
         <p>* BROOKLYN NY *</p>

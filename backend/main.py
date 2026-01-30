@@ -244,6 +244,47 @@ class OCRInput(BaseModel):
     file_type: str  # MIME type (application/pdf, image/png, etc.)
     file_name: str
 
+
+class ClassifyInput(BaseModel):
+    text: str
+
+
+class ClassifyResult(BaseModel):
+    document_type: str  # "coi", "lease", "insurance_policy", "contract", "unknown"
+    confidence: float  # 0-1
+    description: str  # Human-readable description
+    supported: bool  # Whether we can analyze this type
+
+
+# Supported document types
+SUPPORTED_DOC_TYPES = {
+    "coi": {
+        "name": "Certificate of Insurance",
+        "description": "ACORD 25 or similar certificate of insurance",
+        "supported": True
+    },
+    "lease": {
+        "name": "Property Lease",
+        "description": "Commercial or residential lease agreement",
+        "supported": True
+    },
+    "insurance_policy": {
+        "name": "Insurance Policy",
+        "description": "Full insurance policy document",
+        "supported": False
+    },
+    "contract": {
+        "name": "Contract",
+        "description": "General contract or agreement",
+        "supported": False
+    },
+    "unknown": {
+        "name": "Unknown Document",
+        "description": "Could not identify document type",
+        "supported": False
+    }
+}
+
 # State-specific insurance requirements data
 # Based on comprehensive research as of January 2026
 
@@ -1354,6 +1395,22 @@ async def get_ai_limited_states():
     }
 
 
+CLASSIFY_PROMPT = """Classify this document into one of these categories:
+- "coi" = Certificate of Insurance (ACORD 25 form, insurance certificate, proof of coverage)
+- "lease" = Property Lease (rental agreement, commercial lease, residential lease)
+- "insurance_policy" = Full Insurance Policy (declarations page, policy document, coverage details)
+- "contract" = Other Contract (service agreement, vendor contract, NDA, etc.)
+- "unknown" = Cannot determine
+
+Look for key indicators:
+- COI: "CERTIFICATE OF LIABILITY INSURANCE", "ACORD", "CERTIFICATE HOLDER", "ADDITIONAL INSURED"
+- Lease: "LEASE AGREEMENT", "LANDLORD", "TENANT", "RENT", "PREMISES", "TERM"
+- Insurance Policy: "DECLARATIONS", "POLICY NUMBER", "COVERAGE", "PREMIUM", "ENDORSEMENT"
+- Contract: "AGREEMENT", "PARTIES", "TERMS AND CONDITIONS", "WHEREAS"
+
+Return JSON only:
+{"type": "coi|lease|insurance_policy|contract|unknown", "confidence": 0.0-1.0, "reason": "brief explanation"}"""
+
 OCR_PROMPT = """Extract ALL text from this document image. This is likely an insurance document, certificate of insurance (COI), policy, lease, or contract.
 
 Return the text exactly as it appears, preserving:
@@ -1417,6 +1474,82 @@ async def ocr_document(input: OCRInput):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
+
+
+@app.post("/api/classify", response_model=ClassifyResult)
+async def classify_document(input: ClassifyInput):
+    """Classify document type using cheap/fast model"""
+    try:
+        # Mock mode
+        if MOCK_MODE:
+            text_lower = input.text.lower()
+            if 'certificate' in text_lower and ('insurance' in text_lower or 'liability' in text_lower):
+                doc_type = "coi"
+            elif 'lease' in text_lower or ('landlord' in text_lower and 'tenant' in text_lower):
+                doc_type = "lease"
+            elif 'policy' in text_lower and 'premium' in text_lower:
+                doc_type = "insurance_policy"
+            elif 'agreement' in text_lower or 'contract' in text_lower:
+                doc_type = "contract"
+            else:
+                doc_type = "unknown"
+
+            doc_info = SUPPORTED_DOC_TYPES[doc_type]
+            return ClassifyResult(
+                document_type=doc_type,
+                confidence=0.85,
+                description=doc_info["name"],
+                supported=doc_info["supported"]
+            )
+
+        client = get_client()
+
+        # Use cheap model for classification - just need first ~2000 chars
+        sample_text = input.text[:2000]
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Cheap and fast
+            max_tokens=150,
+            messages=[
+                {"role": "system", "content": CLASSIFY_PROMPT},
+                {"role": "user", "content": f"Classify this document:\n\n{sample_text}"}
+            ]
+        )
+
+        response_text = response.choices[0].message.content.strip()
+
+        # Parse JSON response
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        response_text = response_text.strip()
+
+        result = json.loads(response_text)
+        doc_type = result.get("type", "unknown")
+
+        # Validate doc_type
+        if doc_type not in SUPPORTED_DOC_TYPES:
+            doc_type = "unknown"
+
+        doc_info = SUPPORTED_DOC_TYPES[doc_type]
+
+        return ClassifyResult(
+            document_type=doc_type,
+            confidence=result.get("confidence", 0.5),
+            description=doc_info["name"],
+            supported=doc_info["supported"]
+        )
+
+    except json.JSONDecodeError:
+        return ClassifyResult(
+            document_type="unknown",
+            confidence=0.0,
+            description="Could not classify document",
+            supported=False
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
 
 
 if __name__ == "__main__":
