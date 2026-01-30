@@ -2,6 +2,9 @@ import { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import './App.css'
 
+// API base URL - uses environment variable in production, localhost in dev
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8081'
+
 interface Coverage {
   type: string
   limit: string
@@ -391,7 +394,7 @@ function App() {
     setProposal(null)
 
     try {
-      const res = await fetch('http://localhost:8081/api/extract', {
+      const res = await fetch(`${API_BASE}/api/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: inputText })
@@ -414,7 +417,7 @@ function App() {
     setLoading(true)
 
     try {
-      const res = await fetch('http://localhost:8081/api/generate-proposal', {
+      const res = await fetch(`${API_BASE}/api/generate-proposal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(extracted)
@@ -448,7 +451,7 @@ function App() {
     setComplianceReport(null)
 
     try {
-      const res = await fetch('http://localhost:8081/api/check-coi-compliance', {
+      const res = await fetch(`${API_BASE}/api/check-coi-compliance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
