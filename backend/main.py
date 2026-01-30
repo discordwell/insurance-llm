@@ -6,6 +6,7 @@ from openai import OpenAI
 import json
 import os
 import re
+import base64
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -236,6 +237,12 @@ class COIComplianceInput(BaseModel):
     project_type: Optional[str] = None  # preset project type
     custom_requirements: Optional[dict] = None  # custom requirements
     state: Optional[str] = None  # 2-letter state code for state-specific rules
+
+
+class OCRInput(BaseModel):
+    file_data: str  # base64 encoded file
+    file_type: str  # MIME type (application/pdf, image/png, etc.)
+    file_name: str
 
 # State-specific insurance requirements data
 # Based on comprehensive research as of January 2026
@@ -1345,6 +1352,72 @@ async def get_ai_limited_states():
         "count": len(states),
         "note": "These states have broad anti-indemnity statutes. AI coverage may be limited when you share fault. See mitigation options for each state."
     }
+
+
+OCR_PROMPT = """Extract ALL text from this document image. This is likely an insurance document, certificate of insurance (COI), policy, lease, or contract.
+
+Return the text exactly as it appears, preserving:
+- Line breaks and formatting
+- Checkbox status (show as [X] for checked, [ ] for unchecked)
+- Tables and columns (use spacing to preserve alignment)
+- Headers and section titles
+- All numbers, dates, and dollar amounts exactly as written
+
+Do not summarize or interpret - just extract the raw text content."""
+
+
+@app.post("/api/ocr")
+async def ocr_document(input: OCRInput):
+    """Extract text from PDF or image using OpenAI Vision API"""
+    try:
+        # Mock mode - return placeholder text
+        if MOCK_MODE:
+            return {
+                "text": f"[Mock OCR result for {input.file_name}]\n\nSample extracted text would appear here.\nUpload a real document with OPENAI_API_KEY configured."
+            }
+
+        client = get_client()
+
+        # Determine the media type for the data URL
+        if input.file_type.startswith('image/'):
+            media_type = input.file_type
+        elif input.file_type == 'application/pdf':
+            media_type = 'application/pdf'
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {input.file_type}")
+
+        # Create the data URL
+        data_url = f"data:{media_type};base64,{input.file_data}"
+
+        # Call OpenAI Vision API
+        response = client.chat.completions.create(
+            model="gpt-4o",  # Use gpt-4o for vision capabilities
+            max_tokens=4096,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": OCR_PROMPT
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": data_url
+                            }
+                        }
+                    ]
+                }
+            ]
+        )
+
+        extracted_text = response.choices[0].message.content
+        return {"text": extracted_text}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
