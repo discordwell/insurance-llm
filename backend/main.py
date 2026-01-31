@@ -9,9 +9,132 @@ import re
 import base64
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import datetime
+from contextlib import asynccontextmanager
+
+# Database imports
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Boolean
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 # Load .env file
 load_dotenv()
+
+# Database setup - uses DATABASE_URL env var (set in Railway)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+db_engine = None
+SessionLocal = None
+Base = declarative_base()
+
+# Database models
+class Upload(Base):
+    __tablename__ = "uploads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    document_type = Column(String(50), index=True)  # coi, lease, gym, etc.
+    document_text = Column(Text)
+    text_length = Column(Integer)
+    state = Column(String(10), nullable=True)  # User-selected state
+    analysis_result = Column(JSON, nullable=True)  # Full analysis response
+    overall_risk = Column(String(20), nullable=True)  # high/medium/low
+    risk_score = Column(Integer, nullable=True)
+    red_flag_count = Column(Integer, nullable=True)
+    # Metadata
+    source = Column(String(50), default="web")  # web, api, etc.
+    user_agent = Column(String(500), nullable=True)
+
+class Waitlist(Base):
+    __tablename__ = "waitlist"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    email = Column(String(255), index=True)
+    document_type = Column(String(100))  # What they uploaded
+    document_text_preview = Column(Text, nullable=True)  # First 500 chars
+    notified = Column(Boolean, default=False)
+    notified_at = Column(DateTime, nullable=True)
+
+def init_db():
+    """Initialize database connection and create tables"""
+    global db_engine, SessionLocal
+    if DATABASE_URL:
+        # Railway uses postgres:// but SQLAlchemy needs postgresql://
+        db_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+        db_engine = create_engine(db_url)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+        Base.metadata.create_all(bind=db_engine)
+        print("Database initialized successfully")
+        return True
+    else:
+        print("DATABASE_URL not set - running without database storage")
+        return False
+
+def get_db():
+    """Get database session"""
+    if SessionLocal is None:
+        return None
+    db = SessionLocal()
+    try:
+        return db
+    except:
+        db.close()
+        raise
+
+def save_upload(doc_type: str, text: str, state: str = None, analysis: dict = None, user_agent: str = None):
+    """Save an upload to the database"""
+    db = get_db()
+    if db is None:
+        return None  # No database configured
+
+    try:
+        upload = Upload(
+            document_type=doc_type,
+            document_text=text,
+            text_length=len(text),
+            state=state,
+            analysis_result=analysis,
+            overall_risk=analysis.get("overall_risk") if analysis else None,
+            risk_score=analysis.get("risk_score") if analysis else None,
+            red_flag_count=len(analysis.get("red_flags", [])) if analysis else None,
+            user_agent=user_agent
+        )
+        db.add(upload)
+        db.commit()
+        db.refresh(upload)
+        return upload.id
+    except Exception as e:
+        print(f"Error saving upload: {e}")
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+def save_waitlist(email: str, doc_type: str, text_preview: str = None):
+    """Save a waitlist signup"""
+    db = get_db()
+    if db is None:
+        return None
+
+    try:
+        entry = Waitlist(
+            email=email,
+            document_type=doc_type,
+            document_text_preview=text_preview[:500] if text_preview else None
+        )
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+        return entry.id
+    except Exception as e:
+        print(f"Error saving waitlist: {e}")
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+# Initialize database on startup
+init_db()
 
 # Check if we're in mock mode (for testing without API key)
 MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
@@ -941,6 +1064,42 @@ Return ONLY valid JSON, no markdown formatting."""
 def read_root():
     return {"status": "online", "message": "Insurance LLM API - Pixel Perfect Coverage Analysis"}
 
+# Waitlist signup model
+class WaitlistInput(BaseModel):
+    email: str
+    document_type: str
+    document_text: Optional[str] = None
+
+class WaitlistResponse(BaseModel):
+    success: bool
+    message: str
+
+@app.post("/api/waitlist", response_model=WaitlistResponse)
+async def add_to_waitlist(input: WaitlistInput):
+    """Add someone to the waitlist for unsupported document types"""
+    # Validate email format (basic)
+    if not input.email or '@' not in input.email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+
+    # Save to database
+    entry_id = save_waitlist(
+        email=input.email,
+        doc_type=input.document_type,
+        text_preview=input.document_text
+    )
+
+    if entry_id:
+        return WaitlistResponse(
+            success=True,
+            message=f"Added to waitlist for {input.document_type}"
+        )
+    else:
+        # Still return success even if DB not configured (graceful degradation)
+        return WaitlistResponse(
+            success=True,
+            message="Thanks! We'll notify you when we support this document type."
+        )
+
 @app.post("/api/extract", response_model=ExtractedPolicy)
 async def extract_document(doc: DocumentInput):
     """Extract structured data from insurance document text"""
@@ -1479,6 +1638,8 @@ async def check_coi_compliance(input: COIComplianceInput):
         if MOCK_MODE:
             coi_data = mock_coi_extract(input.coi_text)
             result = mock_compliance_check(coi_data, requirements, input.state)
+            # Save upload
+            save_upload("coi", input.coi_text, input.state, result)
             return ComplianceReport(**result)
 
         # Step 1: Extract COI data
@@ -1522,6 +1683,9 @@ async def check_coi_compliance(input: COIComplianceInput):
         # Calculate extraction confidence metadata
         extraction_metadata = calculate_extraction_confidence(coi_data)
         result['extraction_metadata'] = extraction_metadata
+
+        # Save upload
+        save_upload("coi", input.coi_text, input.state, result)
 
         return ComplianceReport(**result)
 
@@ -2189,6 +2353,7 @@ async def analyze_lease(input: LeaseAnalysisInput):
         # Mock mode
         if MOCK_MODE:
             result = mock_lease_analysis(input.lease_text, input.state)
+            save_upload("lease", input.lease_text, input.state, result)
             return LeaseAnalysisReport(**result)
 
         client = get_client()
@@ -2232,6 +2397,13 @@ async def analyze_lease(input: LeaseAnalysisInput):
         analysis = json.loads(response_text)
 
         # Merge extraction and analysis
+        result = {
+            "overall_risk": analysis.get("overall_risk", "medium"),
+            "risk_score": analysis.get("risk_score", 50),
+            "red_flags": analysis.get("red_flags", [])
+        }
+        save_upload("lease", input.lease_text, input.state, result)
+
         return LeaseAnalysisReport(
             overall_risk=analysis.get("overall_risk", "medium"),
             risk_score=analysis.get("risk_score", 50),
@@ -2604,6 +2776,7 @@ async def analyze_gym_contract(input: GymContractInput):
     try:
         if MOCK_MODE:
             result = mock_gym_analysis(input.contract_text, input.state)
+            save_upload("gym", input.contract_text, input.state, result)
             return GymContractReport(**result)
 
         client = get_client()
@@ -2629,6 +2802,7 @@ async def analyze_gym_contract(input: GymContractInput):
                 response_text = response_text[4:]
 
         result = json.loads(response_text.strip())
+        save_upload("gym", input.contract_text, input.state, result)
         return GymContractReport(**result)
 
     except Exception as e:
@@ -2926,6 +3100,7 @@ async def analyze_employment_contract(input: EmploymentContractInput):
     try:
         if MOCK_MODE:
             result = mock_employment_analysis(input.contract_text, input.state, input.salary)
+            save_upload("employment", input.contract_text, input.state, result)
             return EmploymentContractReport(**result)
 
         client = get_client()
@@ -2951,6 +3126,7 @@ async def analyze_employment_contract(input: EmploymentContractInput):
                 response_text = response_text[4:]
 
         result = json.loads(response_text.strip())
+        save_upload("employment", input.contract_text, input.state, result)
         return EmploymentContractReport(**result)
 
     except Exception as e:
@@ -3159,6 +3335,7 @@ async def analyze_freelancer_contract(input: FreelancerContractInput):
     try:
         if MOCK_MODE:
             result = mock_freelancer_analysis(input.contract_text, input.project_value)
+            save_upload("freelancer", input.contract_text, None, result)
             return FreelancerContractReport(**result)
 
         client = get_client()
@@ -3209,6 +3386,7 @@ Return ONLY valid JSON."""
                 response_text = response_text[4:]
 
         result = json.loads(response_text.strip())
+        save_upload("freelancer", input.contract_text, None, result)
         return FreelancerContractReport(**result)
 
     except Exception as e:
@@ -3450,6 +3628,7 @@ async def analyze_influencer_contract(input: InfluencerContractInput):
     try:
         if MOCK_MODE:
             result = mock_influencer_analysis(input.contract_text, input.base_rate)
+            save_upload("influencer", input.contract_text, None, result)
             return InfluencerContractReport(**result)
 
         client = get_client()
@@ -3502,6 +3681,7 @@ Return ONLY valid JSON."""
                 response_text = response_text[4:]
 
         result = json.loads(response_text.strip())
+        save_upload("influencer", input.contract_text, None, result)
         return InfluencerContractReport(**result)
 
     except Exception as e:
@@ -3736,6 +3916,7 @@ async def analyze_timeshare_contract(input: TimeshareContractInput):
                 input.purchase_price,
                 input.annual_fee
             )
+            save_upload("timeshare", input.contract_text, input.state, result)
             return TimeshareContractReport(**result)
 
         client = get_client()
@@ -3791,6 +3972,7 @@ Return ONLY valid JSON."""
                 response_text = response_text[4:]
 
         result = json.loads(response_text.strip())
+        save_upload("timeshare", input.contract_text, input.state, result)
         return TimeshareContractReport(**result)
 
     except Exception as e:
@@ -3997,6 +4179,7 @@ async def analyze_insurance_policy(input: InsurancePolicyInput):
     try:
         if MOCK_MODE:
             result = mock_insurance_policy_analysis(input.policy_text, input.policy_type, input.state)
+            save_upload("insurance_policy", input.policy_text, input.state, result)
             return InsurancePolicyReport(**result)
 
         client = get_client()
@@ -4047,6 +4230,7 @@ Return ONLY valid JSON."""
                 response_text = response_text[4:]
 
         result = json.loads(response_text.strip())
+        save_upload("insurance_policy", input.policy_text, input.state, result)
         return InsurancePolicyReport(**result)
 
     except Exception as e:

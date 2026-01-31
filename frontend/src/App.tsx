@@ -722,9 +722,20 @@ function App() {
     }
   }
 
-  const handleWaitlistSubmit = () => {
-    // TODO: Actually submit to a backend/email service
-    console.log('Waitlist signup:', waitlistEmail, 'for', unsupportedType)
+  const handleWaitlistSubmit = async () => {
+    try {
+      await fetch(`${API_BASE}/api/waitlist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: waitlistEmail,
+          document_type: unsupportedType,
+          document_text: docText
+        })
+      })
+    } catch (err) {
+      console.error('Waitlist signup failed:', err)
+    }
     setEmailSubmitted(true)
   }
 
