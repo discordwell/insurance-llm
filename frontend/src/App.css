@@ -1789,30 +1789,45 @@ body {
 .footer {
   text-align: center;
   padding: 32px 16px;
-}
-
-.footer-links {
   display: flex;
-  gap: 16px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-top: 12px;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
-.github-link {
-  display: inline-block;
-  font-family: 'Press Start 2P', cursive;
-  font-size: 10px;
-  padding: 12px 20px;
-  background: var(--pixel-bg-dark);
+.donate-link-footer {
+  font-family: 'VT323', monospace;
+  font-size: 20px;
   color: var(--pixel-text);
   text-decoration: none;
+  padding: 12px 24px;
+  background: var(--pixel-yellow);
   border: 2px solid var(--pixel-border);
   transition: all 0.1s;
+  line-height: 1.4;
+  max-width: 400px;
+  text-align: center;
 }
 
-.github-link:hover {
+.donate-link-footer:hover {
   transform: translate(-2px, -2px);
   box-shadow: 2px 2px 0 var(--pixel-shadow);
-  background: var(--pixel-bg);
+  background: #ffe066;
+}
+
+.donate-link-footer s {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.github-link-small {
+  font-family: 'VT323', monospace;
+  font-size: 16px;
+  color: var(--pixel-gray);
+  text-decoration: none;
+}
+
+.github-link-small:hover {
+  color: var(--pixel-text);
+  text-decoration: underline;
 }

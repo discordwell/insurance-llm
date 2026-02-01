@@ -349,6 +349,18 @@ function App() {
   const [currentOffer, setCurrentOffer] = useState<AffiliateOffer | null>(null)
   const [, setOfferIndex] = useState(0)
 
+  // Donation link text - randomized on mount
+  const donationTexts = [
+    { text: 'Support my <s>caffeine</s> Claude addiction', isHtml: true },
+    { text: 'Compute is cheap / but it ain\'t free / if this helped you out / then please pay me', isHtml: false },
+    { text: 'Feed the AI overlords', isHtml: false },
+    { text: 'This site costs mass/energy, pls donate', isHtml: false },
+    { text: 'Buy me mass-energy equivalence (E=mc²)', isHtml: false },
+    { text: 'Tokens aren\'t free, help a dev out', isHtml: false },
+    { text: 'GPU go brrrr (but it costs $$$)', isHtml: false },
+  ]
+  const [donationText] = useState(() => donationTexts[Math.floor(Math.random() * donationTexts.length)])
+
   // Check auth status on mount
   useEffect(() => {
     const checkAuth = async () => {
@@ -2672,24 +2684,26 @@ function App() {
       )}
 
       <footer className="footer">
-        <div className="footer-links">
-          <a
-            href={STRIPE_DONATION_LINK}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="donate-link"
-          >
-            [BUY ME A COFFEE]
-          </a>
-          <a
-            href="https://github.com/discordwell/insurance-llm"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="github-link"
-          >
-            [GITHUB]
-          </a>
-        </div>
+        <a
+          href={STRIPE_DONATION_LINK}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="donate-link-footer"
+        >
+          {donationText.isHtml ? (
+            <span dangerouslySetInnerHTML={{ __html: donationText.text }} />
+          ) : (
+            donationText.text
+          )}
+        </a>
+        <a
+          href="https://github.com/discordwell/insurance-llm"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="github-link-small"
+        >
+          github
+        </a>
       </footer>
     </div>
   )
