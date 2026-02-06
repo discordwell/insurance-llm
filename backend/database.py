@@ -1,7 +1,6 @@
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Boolean, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from config import DATABASE_URL
 
 Base = declarative_base()
@@ -15,8 +14,11 @@ def init_db():
         db_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
         db_engine = create_engine(db_url)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
-        Base.metadata.create_all(bind=db_engine)
-        print("Database initialized successfully")
+        try:
+            Base.metadata.create_all(bind=db_engine)
+            print("Database initialized successfully")
+        except Exception as e:
+            print(f"Database table creation failed (will retry on first request): {e}")
         return True
     else:
         print("DATABASE_URL not set - running without database storage")
