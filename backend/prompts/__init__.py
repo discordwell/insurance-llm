@@ -1,0 +1,27 @@
+from prompts.classify import CLASSIFY_PROMPT
+from prompts.coi import COI_EXTRACTION_PROMPT, COI_COMPLIANCE_PROMPT
+from prompts.extraction import EXTRACTION_PROMPT
+from prompts.lease import LEASE_EXTRACTION_PROMPT, LEASE_ANALYSIS_PROMPT
+from prompts.gym import GYM_ANALYSIS_PROMPT
+from prompts.employment import EMPLOYMENT_ANALYSIS_PROMPT
+from prompts.freelancer import FREELANCER_ANALYSIS_PROMPT
+from prompts.influencer import INFLUENCER_ANALYSIS_PROMPT
+from prompts.timeshare import TIMESHARE_ANALYSIS_PROMPT
+from prompts.insurance_policy import INSURANCE_POLICY_ANALYSIS_PROMPT
+from prompts.ocr import OCR_PROMPT
+
+__all__ = [
+    "CLASSIFY_PROMPT",
+    "COI_EXTRACTION_PROMPT",
+    "COI_COMPLIANCE_PROMPT",
+    "EXTRACTION_PROMPT",
+    "LEASE_EXTRACTION_PROMPT",
+    "LEASE_ANALYSIS_PROMPT",
+    "GYM_ANALYSIS_PROMPT",
+    "EMPLOYMENT_ANALYSIS_PROMPT",
+    "FREELANCER_ANALYSIS_PROMPT",
+    "INFLUENCER_ANALYSIS_PROMPT",
+    "TIMESHARE_ANALYSIS_PROMPT",
+    "INSURANCE_POLICY_ANALYSIS_PROMPT",
+    "OCR_PROMPT",
+]
